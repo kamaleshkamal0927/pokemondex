@@ -111,12 +111,7 @@ export function PokemonCard({ name, url, onClick }: PokemonCardProps) {
             {/* Magnetic Spotlight */}
             <motion.div 
               className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-              style={{
-                background: useTransform(
-                  [mouseXSpring, mouseYSpring],
-                  ([x, y]) => `radial-gradient(600px circle at ${(x as number + 0.5) * 100}% ${(y as number + 0.5) * 100}%, rgba(255,255,255,0.1), transparent 40%)`
-                )
-              }}
+              style={{ background: "transparent" }}
             />
 
             <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-black/20 p-4">
