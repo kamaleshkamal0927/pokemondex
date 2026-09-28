@@ -1,97 +1,37 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Heart } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { useFavorites } from '@/hooks/useFavorites'
 
 interface FavoriteButtonProps {
   pokemonId: number
-  pokemonName: string
+  pokemonName?: string // kept for backward compatibility if needed, though unused now
 }
 
-export function FavoriteButton({ pokemonId, pokemonName }: FavoriteButtonProps) {
-  const [isFavorite, setIsFavorite] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+export function FavoriteButton({ pokemonId }: FavoriteButtonProps) {
+  const { isFavorite, toggleFavorite, isLoaded } = useFavorites()
 
-  useEffect(() => {
-    async function checkFavorite() {
-      // If Supabase isn't configured yet, don't try to fetch
-      if (!supabase.from) {
-        setIsLoading(false)
-        return
-      }
+  if (!isLoaded) return null // Avoid hydration mismatch
 
-      try {
-        const { data, error } = await supabase
-          .from('favorites')
-          .select('id')
-          .eq('pokemon_id', pokemonId)
-          .single()
+  const favorite = isFavorite(pokemonId)
 
-        if (data) {
-          setIsFavorite(true)
-        }
-      } catch (error) {
-        console.error('Error checking favorite status:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    checkFavorite()
-  }, [pokemonId])
-
-  const toggleFavorite = async (e: React.MouseEvent) => {
+  const handleToggle = (e: React.MouseEvent) => {
     e.preventDefault() // Prevent navigation if wrapped in a Link
-    
-    // Alert the user if Supabase is not configured
-    if (!supabase.from) {
-      alert("Please configure your Supabase URL and Anon Key in the .env.local file to use the Favorites feature!")
-      return
-    }
-
-    if (isLoading) return
-    setIsLoading(true)
-
-    try {
-      if (isFavorite) {
-        // Remove from favorites
-        await supabase
-          .from('favorites')
-          .delete()
-          .eq('pokemon_id', pokemonId)
-        
-        setIsFavorite(false)
-      } else {
-        // Add to favorites
-        await supabase
-          .from('favorites')
-          .insert([
-            { pokemon_id: pokemonId, pokemon_name: pokemonName }
-          ])
-        
-        setIsFavorite(true)
-      }
-    } catch (error) {
-      console.error('Error toggling favorite:', error)
-    } finally {
-      setIsLoading(false)
-    }
+    toggleFavorite(pokemonId)
   }
 
   return (
     <button
-      onClick={toggleFavorite}
-      disabled={isLoading}
+      onClick={handleToggle}
       className={`rounded-full p-2 backdrop-blur-md transition-all hover:scale-110 ${
-        isFavorite
+        favorite
           ? 'bg-red-500/10 text-red-500'
           : 'bg-black/10 text-slate-400 hover:bg-black/20 hover:text-white'
       }`}
-      aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+      aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}
     >
       <Heart
-        className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`}
+        className={`h-5 w-5 ${favorite ? 'fill-current' : ''}`}
       />
     </button>
   )
