@@ -1,284 +1,330 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
-import { Search, Heart, ChevronDown } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { PokemonCard } from './PokemonCard'
-import { PokemonDetailModal } from './PokemonDetailModal'
+import { AnimatePresence } from 'framer-motion'
+import { HeaderHUD, NavTab } from './HeaderHUD'
+import { Sidebar } from './Sidebar'
+import { BentoGrid } from './BentoGrid'
+import { HoloDetailPanel } from './HoloDetailPanel'
+import { TeamBuilder } from './TeamBuilder'
+import { BattleCompare } from './BattleCompare'
+import { WhosThatPokemon } from './WhosThatPokemon'
+import { FavoritesView } from './FavoritesView'
 import { CommandPalette } from './CommandPalette'
-import { useApp } from './AppProvider'
-import { useSoundFX } from './SoundProvider'
-import { TYPE_COLORS } from '@/constants/typeColors'
-import { POKEMON_GENERATIONS } from '@/lib/pokeapi'
+import { useFavorites } from '@/hooks/useFavorites'
+import { GENERATIONS, getPokemonRarity } from '@/lib/pokeapi'
 
 interface DashboardClientProps {
   initialPokemon: { name: string; url: string }[]
 }
 
-const POKEMON_TYPES = Object.keys(TYPE_COLORS).filter(t => t !== 'default')
+const ITEMS_PER_PAGE = 24
 
-type SortKey = 'id' | 'name-asc' | 'name-desc' | 'bst' | 'speed' | 'attack'
+function getIdFromUrl(url: string) {
+  const m = url.match(/\/pokemon\/(\d+)\//)
+  return m ? parseInt(m[1], 10) : 0
+}
 
 export function DashboardClient({ initialPokemon }: DashboardClientProps) {
+  const [activeTab, setActiveTab] = useState<NavTab>('explorer')
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<SortKey>('id')
+  const [sort, setSort] = useState<'id' | 'name-asc' | 'name-desc'>('id')
   const [showFavorites, setShowFavorites] = useState(false)
-  const [typeFilter, setTypeFilter] = useState<string>('All')
+  const [typeFilter, setTypeFilter] = useState('All')
+  const [generationFilter, setGenerationFilter] = useState<number | null>(null)
+  const [rarityFilter, setRarityFilter] = useState<'all' | 'legendary' | 'mythical' | 'standard'>('all')
   const [typeFilteredList, setTypeFilteredList] = useState<string[]>([])
   const [isTypeLoading, setIsTypeLoading] = useState(false)
-  const [genFilter, setGenFilter] = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
-  const [statSortData, setStatSortData] = useState<Record<string, number>>({})
-  const itemsPerPage = 24
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [scanlinesEnabled, setScanlinesEnabled] = useState(false)
 
-  const app = useApp()
-  const { favorites, isFavorite, isLoaded } = app.favorites
-  const { selectedPokemonId, setSelectedPokemonId } = app
-  const { play } = useSoundFX()
+  const { isFavorite, isLoaded } = useFavorites()
 
-  const getIdFromUrl = (url: string) => {
-    const m = url.match(/\/pokemon\/(\d+)\//)
-    return m ? parseInt(m[1], 10) : 0
-  }
-
-  const handleTypeSelect = async (type: string) => {
+  const handleTypeFilter = async (type: string) => {
     setTypeFilter(type)
     setPage(1)
-    play('click')
-    if (type === 'All') { setTypeFilteredList([]); return }
+    if (type === 'All') {
+      setTypeFilteredList([])
+      return
+    }
     setIsTypeLoading(true)
     try {
       const res = await fetch(`https://pokeapi.co/api/v2/type/${type.toLowerCase()}`)
       const data = await res.json()
-      setTypeFilteredList(data.pokemon.map((p: any) => p.pokemon.name))
-    } catch (e) { console.error(e) }
-    finally { setIsTypeLoading(false) }
+      setTypeFilteredList(data.pokemon.map((p: any) => p.pokemon.name as string))
+    } catch {
+    } finally {
+      setIsTypeLoading(false)
+    }
   }
 
-  // Fetch stats for sorting when needed
-  const fetchStatForSort = useCallback(async (name: string) => {
-    if (statSortData[name] !== undefined) return
-    try {
-      const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${name}`)
-      const data = await res.json()
-      const bst = data.stats.reduce((acc: number, s: any) => acc + s.base_stat, 0)
-      const speed = data.stats.find((s: any) => s.stat.name === 'speed')?.base_stat || 0
-      const attack = data.stats.find((s: any) => s.stat.name === 'attack')?.base_stat || 0
-      setStatSortData(prev => ({
-        ...prev,
-        [`${name}_bst`]: bst,
-        [`${name}_speed`]: speed,
-        [`${name}_attack`]: attack,
-      }))
-    } catch {}
-  }, [statSortData])
+  // Filter & Sort Logic
+  const filtered = useMemo(() => {
+    let list = initialPokemon
 
-  const filteredPokemon = useMemo(() => {
-    let result = initialPokemon
+    // Search query
+    if (search.trim()) {
+      const q = search.toLowerCase().trim()
+      list = list.filter(p => {
+        const id = getIdFromUrl(p.url).toString()
+        return p.name.includes(q) || id === q || `#${id}` === q
+      })
+    }
 
-    if (search) result = result.filter(p => p.name.includes(search.toLowerCase()) || String(getIdFromUrl(p.url)).includes(search))
+    // Favorites filter
     if (showFavorites && isLoaded) {
-      result = result.filter(p => isFavorite(getIdFromUrl(p.url)))
+      list = list.filter(p => isFavorite(getIdFromUrl(p.url)))
     }
+
+    // Type filter
     if (typeFilter !== 'All' && typeFilteredList.length > 0) {
-      result = result.filter(p => typeFilteredList.includes(p.name))
+      list = list.filter(p => typeFilteredList.includes(p.name))
     }
-    if (genFilter !== null) {
-      const gen = POKEMON_GENERATIONS[genFilter]
-      result = result.filter(p => {
+
+    // Generation filter
+    if (generationFilter !== null) {
+      const genConfig = GENERATIONS.find(g => g.id === generationFilter)
+      if (genConfig) {
+        list = list.filter(p => {
+          const id = getIdFromUrl(p.url)
+          return id >= genConfig.startId && id <= genConfig.endId
+        })
+      }
+    }
+
+    // Rarity filter
+    if (rarityFilter !== 'all') {
+      list = list.filter(p => {
         const id = getIdFromUrl(p.url)
-        return id >= gen.start && id <= gen.end
+        return getPokemonRarity(id) === rarityFilter
       })
     }
-    // Exclude non-standard pokemon (id > 1025)
-    result = result.filter(p => getIdFromUrl(p.url) <= 1025)
 
-    if (sort === 'name-asc') result = [...result].sort((a, b) => a.name.localeCompare(b.name))
-    else if (sort === 'name-desc') result = [...result].sort((a, b) => b.name.localeCompare(a.name))
-    else if (sort === 'bst' || sort === 'speed' || sort === 'attack') {
-      const key = sort
-      result = [...result].sort((a, b) => {
-        const va = statSortData[`${a.name}_${key}`] ?? 0
-        const vb = statSortData[`${b.name}_${key}`] ?? 0
-        return vb - va
-      })
-      // Trigger fetches for missing data
-      result.slice(0, itemsPerPage).forEach(p => fetchStatForSort(p.name))
+    // Sorting
+    if (sort === 'name-asc') {
+      list = [...list].sort((a, b) => a.name.localeCompare(b.name))
+    } else if (sort === 'name-desc') {
+      list = [...list].sort((a, b) => b.name.localeCompare(a.name))
+    } else {
+      list = [...list].sort((a, b) => getIdFromUrl(a.url) - getIdFromUrl(b.url))
     }
 
-    return result
-  }, [initialPokemon, search, showFavorites, isLoaded, favorites, typeFilter, typeFilteredList, genFilter, sort, statSortData, fetchStatForSort])
+    return list
+  }, [
+    initialPokemon,
+    search,
+    showFavorites,
+    isLoaded,
+    typeFilter,
+    typeFilteredList,
+    generationFilter,
+    rarityFilter,
+    sort,
+  ])
 
-  const paginatedPokemon = filteredPokemon.slice((page - 1) * itemsPerPage, page * itemsPerPage)
-  const totalPages = Math.ceil(filteredPokemon.length / itemsPerPage)
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
+  const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
-  const openModal = useCallback((id: number) => { setSelectedPokemonId(id); play('open') }, [setSelectedPokemonId, play])
-  const closeModal = useCallback(() => { setSelectedPokemonId(null); play('close') }, [setSelectedPokemonId, play])
+  const openDetail = useCallback((id: number) => setSelectedId(id), [])
+  const closeDetail = useCallback(() => setSelectedId(null), [])
+
+  // Prev / Next Navigation in Modal
+  const currentFilteredIds = filtered.map(p => getIdFromUrl(p.url))
+  const currentIndex = selectedId !== null ? currentFilteredIds.indexOf(selectedId) : -1
+  const onPrev = currentIndex > 0 ? () => setSelectedId(currentFilteredIds[currentIndex - 1]) : undefined
+  const onNext =
+    currentIndex < currentFilteredIds.length - 1
+      ? () => setSelectedId(currentFilteredIds[currentIndex + 1])
+      : undefined
 
   return (
-    <div className="w-full px-4 md:px-8 lg:px-12">
-      <CommandPalette pokemon={initialPokemon} onSelect={openModal} />
+    <div
+      className={`relative min-h-screen flex flex-col bg-[#08090C] text-white ${
+        scanlinesEnabled ? 'scanlines' : ''
+      }`}
+    >
+      {/* Top Gaming HUD Header */}
+      <HeaderHUD
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        scanlinesEnabled={scanlinesEnabled}
+        setScanlinesEnabled={setScanlinesEnabled}
+      />
 
-      {/* Page Title */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-1 h-8 rounded-full bg-gradient-to-b from-blue-400 to-cyan-300 shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
-          <h1 className="text-3xl font-black tracking-tight text-white">Dashboard</h1>
-        </div>
-        <p className="text-sm text-white/40 ml-4">Search, filter, and explore the entire Pokémon universe.</p>
-      </div>
+      {/* Main Container Area */}
+      <div className="flex-1 flex min-h-0 relative">
+        {/* EXPLORER TAB */}
+        {activeTab === 'explorer' && (
+          <>
+            <Sidebar
+              search={search}
+              setSearch={v => {
+                setSearch(v)
+                setPage(1)
+              }}
+              typeFilter={typeFilter}
+              setTypeFilter={handleTypeFilter}
+              generationFilter={generationFilter}
+              setGenerationFilter={g => {
+                setGenerationFilter(g)
+                setPage(1)
+              }}
+              rarityFilter={rarityFilter}
+              setRarityFilter={r => {
+                setRarityFilter(r)
+                setPage(1)
+              }}
+              showFavorites={showFavorites}
+              setShowFavorites={v => {
+                setShowFavorites(v)
+                setPage(1)
+              }}
+              totalCount={initialPokemon.length}
+              filteredCount={filtered.length}
+              sort={sort}
+              setSort={v => {
+                setSort(v as any)
+                setPage(1)
+              }}
+            />
 
-      {/* Toolbar */}
-      <div className="mb-8 flex flex-col gap-4 rounded-2xl bg-white/[0.02] backdrop-blur-xl border border-white/10 p-4 md:flex-row md:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
-          <input
-            type="text"
-            placeholder="Search Pokémon…  ⌘K"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-10 pr-10 text-white placeholder:text-white/30 outline-none focus:border-white/30 transition-colors"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-white transition-colors">✕</button>
-          )}
-        </div>
+            <main className="flex-1 lg:ml-64 min-w-0 p-4 sm:p-6 lg:p-8">
+              {/* Explorer Header */}
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
+                    National Pokédex
+                  </h1>
+                  <p className="text-xs text-white/40 tracking-wider font-mono uppercase mt-1">
+                    {isTypeLoading
+                      ? 'Querying elemental mainframe...'
+                      : `${filtered.length.toLocaleString()} OPERATIVES LOGGED`}
+                  </p>
+                </div>
+              </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <select
-              value={sort}
-              onChange={e => { setSort(e.target.value as SortKey); setPage(1); play('click') }}
-              className="rounded-xl border border-white/10 bg-black/30 text-white py-2.5 pl-3 pr-9 text-sm outline-none appearance-none cursor-pointer"
-            >
-              <option value="id">Sort: ID</option>
-              <option value="name-asc">Name (A–Z)</option>
-              <option value="name-desc">Name (Z–A)</option>
-              <option value="bst">Base Stat Total</option>
-              <option value="speed">Speed</option>
-              <option value="attack">Attack</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30 pointer-events-none" />
-          </div>
+              {/* Grid or Status */}
+              {isTypeLoading ? (
+                <div className="flex items-center justify-center py-32 text-white/40 text-xs font-mono tracking-widest uppercase">
+                  <div className="w-7 h-7 border-2 border-white/10 border-t-red-500 rounded-full animate-spin mr-3" />
+                  Querying Type Matrix...
+                </div>
+              ) : paginated.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-32 gap-3 text-center">
+                  <div className="text-5xl">📡</div>
+                  <p className="text-white/60 text-sm font-black uppercase tracking-wider">
+                    No Operatives Detected
+                  </p>
+                  <p className="text-xs text-white/30">Try clearing active filters or search terms.</p>
+                </div>
+              ) : (
+                <BentoGrid pokemonList={paginated} onSelect={openDetail} page={page} />
+              )}
 
-          <div className="relative">
-            <select
-              value={typeFilter}
-              onChange={e => handleTypeSelect(e.target.value)}
-              className="rounded-xl border border-white/10 bg-black/30 text-white py-2.5 pl-3 pr-9 text-sm capitalize outline-none appearance-none cursor-pointer"
-            >
-              <option value="All">All Types</option>
-              {POKEMON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30 pointer-events-none" />
-          </div>
-
-          <div className="relative">
-            <select
-              value={genFilter ?? ''}
-              onChange={e => { setGenFilter(e.target.value ? parseInt(e.target.value) : null); setPage(1); play('click') }}
-              className="rounded-xl border border-white/10 bg-black/30 text-white py-2.5 pl-3 pr-9 text-sm outline-none appearance-none cursor-pointer"
-            >
-              <option value="">All Gens</option>
-              {POKEMON_GENERATIONS.map((g, i) => <option key={i} value={i}>{g.name}</option>)}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30 pointer-events-none" />
-          </div>
-
-          <button
-            onClick={() => { setShowFavorites(!showFavorites); setPage(1); play('click') }}
-            className={`flex items-center gap-2 rounded-xl border py-2.5 px-4 text-sm font-medium transition-all ${showFavorites ? 'border-red-500/50 bg-red-500/10 text-red-400' : 'border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white'}`}
-          >
-            <Heart className={`h-4 w-4 ${showFavorites ? 'fill-current' : ''}`} />
-            {isLoaded && favorites.length > 0 && (
-              <span className="ml-1 rounded-full bg-red-500 px-2 py-0.5 text-xs text-white">{favorites.length}</span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Generation quick pills */}
-      <div className="mb-6 flex flex-wrap gap-2">
-        <button
-          onClick={() => { setGenFilter(null); setPage(1); play('click') }}
-          className={`rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all ${genFilter === null ? 'bg-white/10 text-white border border-white/20' : 'text-white/30 hover:text-white/60 border border-transparent'}`}
-        >
-          All
-        </button>
-        {POKEMON_GENERATIONS.map((g, i) => (
-          <button
-            key={i}
-            onClick={() => { setGenFilter(i); setPage(1); play('click') }}
-            className={`rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all ${genFilter === i ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'text-white/30 hover:text-white/60 border border-transparent'}`}
-          >
-            {g.name}
-          </button>
-        ))}
-      </div>
-
-      {isTypeLoading ? (
-        <div className="py-20 text-center text-white/40 tracking-widest uppercase text-sm">Loading type data…</div>
-      ) : paginatedPokemon.length === 0 ? (
-        <div className="py-20 text-center text-white/40 tracking-widest uppercase text-sm">No Pokémon found.</div>
-      ) : (
-        <>
-          <motion.div
-            layout
-            className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-          >
-            <AnimatePresence mode="popLayout">
-              {paginatedPokemon.map((pokemon, i) => {
-                const id = getIdFromUrl(pokemon.url)
-                return (
-                  <motion.div
-                    key={pokemon.name}
-                    layout
-                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.3, delay: (i % itemsPerPage) * 0.02 }}
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="mt-12 flex items-center justify-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-4 py-2 rounded-xl border border-white/10 bg-white/[0.03] text-xs font-bold text-white/60 hover:text-white hover:border-red-500/40 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                   >
-                    <PokemonCard
-                      name={pokemon.name}
-                      url={pokemon.url}
-                      onClick={() => openModal(id)}
-                    />
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
-          </motion.div>
+                    ← PREV
+                  </button>
 
-          {totalPages > 1 && (
-            <div className="mt-12 flex items-center justify-center gap-4">
-              <button
-                onClick={() => { setPage(p => Math.max(1, p - 1)); play('click') }}
-                disabled={page === 1}
-                className="rounded-full border border-white/10 bg-white/5 px-6 py-2 text-sm font-semibold text-white transition-all hover:bg-white/10 disabled:opacity-30"
-              >
-                ← Previous
-              </button>
-              <span className="text-white/40 text-sm tabular-nums">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => { setPage(p => Math.min(totalPages, p + 1)); play('click') }}
-                disabled={page === totalPages}
-                className="rounded-full border border-white/10 bg-white/5 px-6 py-2 text-sm font-semibold text-white transition-all hover:bg-white/10 disabled:opacity-30"
-              >
-                Next →
-              </button>
-            </div>
-          )}
-        </>
-      )}
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pg = i + 1
+                      if (totalPages > 5) {
+                        if (page <= 3) pg = i + 1
+                        else if (page >= totalPages - 2) pg = totalPages - 4 + i
+                        else pg = page - 2 + i
+                      }
+                      return (
+                        <button
+                          key={pg}
+                          onClick={() => setPage(pg)}
+                          className={`w-9 h-9 rounded-xl text-xs font-mono font-black transition-all ${
+                            pg === page
+                              ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] border border-red-500'
+                              : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'
+                          }`}
+                        >
+                          {pg}
+                        </button>
+                      )
+                    })}
+                  </div>
 
-      {/* Detail Modal */}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-4 py-2 rounded-xl border border-white/10 bg-white/[0.03] text-xs font-bold text-white/60 hover:text-white hover:border-red-500/40 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                  >
+                    NEXT →
+                  </button>
+                </div>
+              )}
+            </main>
+          </>
+        )}
+
+        {/* TEAM BUILDER TAB */}
+        {activeTab === 'team' && (
+          <main className="flex-1 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 w-full">
+            <TeamBuilder allPokemon={initialPokemon} onInspect={openDetail} />
+          </main>
+        )}
+
+        {/* BATTLE COMPARE TAB */}
+        {activeTab === 'battle' && (
+          <main className="flex-1 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 w-full">
+            <BattleCompare allPokemon={initialPokemon} onInspect={openDetail} />
+          </main>
+        )}
+
+        {/* GUESS WHO MINI-GAME TAB */}
+        {activeTab === 'minigame' && (
+          <main className="flex-1 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 w-full">
+            <WhosThatPokemon allPokemon={initialPokemon} />
+          </main>
+        )}
+
+        {/* FAVORITES TAB */}
+        {activeTab === 'favorites' && (
+          <main className="flex-1 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 w-full">
+            <FavoritesView
+              allPokemon={initialPokemon}
+              onSelectPokemon={openDetail}
+              onExplore={() => setActiveTab('explorer')}
+            />
+          </main>
+        )}
+      </div>
+
+      {/* Global Inspection Modal */}
       <AnimatePresence>
-        {selectedPokemonId !== null && (
-          <PokemonDetailModal id={selectedPokemonId} onClose={closeModal} />
+        {selectedId !== null && (
+          <HoloDetailPanel
+            id={selectedId}
+            onClose={closeDetail}
+            onPrev={onPrev}
+            onNext={onNext}
+            onSelectPokemon={openDetail}
+          />
         )}
       </AnimatePresence>
+
+      {/* Global Command Palette */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        allPokemon={initialPokemon}
+        onSelectPokemon={openDetail}
+      />
     </div>
   )
 }

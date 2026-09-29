@@ -1,140 +1,212 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Search, CornerDownLeft } from 'lucide-react'
-import { useSoundFX } from './SoundProvider'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { motion } from 'framer-motion'
+import { Search, ArrowRight } from 'lucide-react'
+import { sound } from '@/utils/soundFx'
 
 interface CommandPaletteProps {
-  pokemon: { name: string; url: string }[]
-  onSelect: (id: number) => void
+  isOpen?: boolean
+  onClose?: () => void
+  allPokemon?: { name: string; url: string }[]
+  pokemon?: { name: string; url: string }[]
+  onSelectPokemon?: (id: number) => void
+  onSelect?: (id: number) => void
 }
 
-export function CommandPalette({ pokemon, onSelect }: CommandPaletteProps) {
-  const [open, setOpen] = useState(false)
+export function CommandPalette({
+  isOpen = false,
+  onClose,
+  allPokemon,
+  pokemon,
+  onSelectPokemon,
+  onSelect,
+}: CommandPaletteProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [highlighted, setHighlighted] = useState(0)
+  const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { play } = useSoundFX()
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setOpen(o => !o)
-      }
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
+  const pokemonList = allPokemon || pokemon || []
+  const handleSelect = onSelectPokemon || onSelect || (() => {})
 
-  useEffect(() => {
-    if (open) {
-      setQuery('')
-      setHighlighted(0)
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
-  }, [open])
+  const effectiveOpen = isOpen || internalOpen
 
-  const getIdFromUrl = (url: string) => {
-    const m = url.match(/\/pokemon\/(\d+)\//)
-    return m ? parseInt(m[1], 10) : 0
+  const handleClose = () => {
+    if (onClose) onClose()
+    setInternalOpen(false)
   }
 
-  const results = query
-    ? pokemon
-        .filter(p => p.name.includes(query.toLowerCase()) || String(getIdFromUrl(p.url)).includes(query))
-        .slice(0, 8)
-    : pokemon.slice(0, 8)
-
-  const handleSelect = useCallback((id: number) => {
-    onSelect(id)
-    setOpen(false)
-    play('select')
-  }, [onSelect, play])
-
+  // Keyboard listener for Cmd+K / Ctrl+K
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!open) return
-      if (e.key === 'ArrowDown') {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setHighlighted(h => Math.min(h + 1, results.length - 1))
+        if (effectiveOpen) {
+          handleClose()
+        } else {
+          setInternalOpen(true)
+          sound.playOpen()
+        }
       }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setHighlighted(h => Math.max(h - 1, 0))
-      }
-      if (e.key === 'Enter' && results[highlighted]) {
-        e.preventDefault()
-        handleSelect(getIdFromUrl(results[highlighted].url))
+      if (e.key === 'Escape' && effectiveOpen) {
+        handleClose()
       }
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, results, highlighted, handleSelect])
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [effectiveOpen])
+
+  useEffect(() => {
+    if (effectiveOpen) {
+      setQuery('')
+      setSelectedIndex(0)
+      setTimeout(() => inputRef.current?.focus(), 50)
+    }
+  }, [effectiveOpen])
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return pokemonList.slice(0, 15)
+    const q = query.toLowerCase().trim()
+    return pokemonList
+      .filter(p => {
+        const m = p.url.match(/\/pokemon\/(\d+)\//)
+        const id = m ? m[1] : ''
+        return p.name.includes(q) || id === q || `#${id}` === q
+      })
+      .slice(0, 15)
+  }, [pokemonList, query])
+
+  // Arrow navigation & Enter selection
+  useEffect(() => {
+    const handleNav = (e: KeyboardEvent) => {
+      if (!effectiveOpen) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex(prev => (prev + 1) % Math.max(filtered.length, 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex(prev => (prev - 1 + filtered.length) % Math.max(filtered.length, 1))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        if (filtered[selectedIndex]) {
+          const m = filtered[selectedIndex].url.match(/\/pokemon\/(\d+)\//)
+          const id = m ? parseInt(m[1], 10) : 0
+          if (id) {
+            handleSelect(id)
+            handleClose()
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handleNav)
+    return () => window.removeEventListener('keydown', handleNav)
+  }, [effectiveOpen, filtered, selectedIndex])
+
+  if (!effectiveOpen) return null
 
   return (
-    <>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm px-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, y: -20, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-xl rounded-2xl bg-[#0c0e14] border border-white/15 shadow-[0_0_60px_rgba(0,0,0,0.8)] overflow-hidden"
-            >
-              <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
-                <Search className="h-5 w-5 text-white/30" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  placeholder="Search by name or ID…"
-                  value={query}
-                  onChange={e => { setQuery(e.target.value); setHighlighted(0) }}
-                  className="flex-1 bg-transparent text-white placeholder:text-white/30 outline-none text-sm"
-                />
-                <kbd className="text-[10px] text-white/30 border border-white/10 rounded px-1.5 py-0.5">ESC</kbd>
-              </div>
+    <div className="fixed inset-0 z-[300] flex items-start justify-center pt-20 px-4">
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={handleClose}
+        className="fixed inset-0 bg-black/85 backdrop-blur-md"
+      />
 
-              <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-                {results.length === 0 ? (
-                  <div className="py-10 text-center text-white/30 text-sm">No results for "{query}"</div>
-                ) : (
-                  results.map((p, i) => {
-                    const id = getIdFromUrl(p.url)
-                    const imgUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`
-                    return (
-                      <button
-                        key={p.name}
-                        onMouseEnter={() => setHighlighted(i)}
-                        onClick={() => handleSelect(id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                          i === highlighted ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'
-                        }`}
-                      >
-                        <img src={imgUrl} alt="" className="w-8 h-8 object-contain" loading="lazy" />
-                        <span className="flex-1 text-sm font-medium capitalize text-white/80">{p.name.replace('-', ' ')}</span>
-                        <span className="text-xs text-white/30 tabular-nums">#{id.toString().padStart(3, '0')}</span>
-                        {i === highlighted && <CornerDownLeft className="h-4 w-4 text-white/20" />}
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+      {/* Palette HUD Modal */}
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0, y: -20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: -20 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0B0C11] shadow-[0_0_80px_rgba(239,68,68,0.2)] overflow-hidden z-10 flex flex-col"
+      >
+        {/* Search Input Bar */}
+        <div className="flex items-center px-6 py-4 border-b border-white/10 bg-white/[0.02]">
+          <Search className="h-5 w-5 text-red-500 mr-3 shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Type Pokémon name or National ID #... (↑ ↓ to navigate, ↵ to inspect)"
+            value={query}
+            onChange={e => {
+              setQuery(e.target.value)
+              setSelectedIndex(0)
+            }}
+            className="w-full bg-transparent text-white text-sm placeholder:text-white/30 outline-none"
+          />
+          <button
+            onClick={handleClose}
+            className="p-1 rounded text-white/40 hover:text-white text-xs font-mono border border-white/10 px-2 ml-2 hover:border-red-500/40"
+          >
+            ESC
+          </button>
+        </div>
+
+        {/* Results List */}
+        <div className="p-3 max-h-[60vh] overflow-y-auto space-y-1">
+          {filtered.length === 0 ? (
+            <div className="p-8 text-center text-white/30 text-xs uppercase tracking-wider font-mono">
+              No operative found matching &quot;{query}&quot;
+            </div>
+          ) : (
+            filtered.map((p, idx) => {
+              const m = p.url.match(/\/pokemon\/(\d+)\//)
+              const id = m ? parseInt(m[1], 10) : 0
+              const isSelected = idx === selectedIndex
+
+              return (
+                <div
+                  key={p.name}
+                  onClick={() => {
+                    handleSelect(id)
+                    handleClose()
+                  }}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all ${
+                    isSelected
+                      ? 'bg-red-600/15 border border-red-500/40 text-white shadow-lg'
+                      : 'border border-transparent text-white/70 hover:bg-white/5'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-white/5 border border-white/5">
+                      <img
+                        src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`}
+                        alt={p.name}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold capitalize text-white">{p.name.replace('-', ' ')}</div>
+                      <div className="text-[10px] font-mono text-white/40">#{id.toString().padStart(3, '0')}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-white/40 flex items-center gap-1">
+                      Inspect <ArrowRight className="h-3 w-3 text-red-400" />
+                    </span>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Footer shortcuts strip */}
+        <div className="px-6 py-3 border-t border-white/5 bg-white/[0.01] flex items-center justify-between text-[11px] text-white/40 font-mono">
+          <div className="flex items-center gap-4">
+            <span>↑ ↓ navigate</span>
+            <span>↵ inspect</span>
+            <span>ESC dismiss</span>
+          </div>
+          <span className="text-red-400/80 font-bold">POKÉDEX PRO CMD</span>
+        </div>
+      </motion.div>
+    </div>
   )
 }
