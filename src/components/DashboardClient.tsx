@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
-import { Search, Heart, Zap, Star, ChevronDown } from 'lucide-react'
+import { Search, Heart, ChevronDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { PokemonCard } from './PokemonCard'
 import { PokemonDetailModal } from './PokemonDetailModal'
@@ -10,7 +10,6 @@ import { useApp } from './AppProvider'
 import { useSoundFX } from './SoundProvider'
 import { TYPE_COLORS } from '@/constants/typeColors'
 import { POKEMON_GENERATIONS } from '@/lib/pokeapi'
-import { getGeneration } from '@/utils/pokemonUtils'
 
 interface DashboardClientProps {
   initialPokemon: { name: string; url: string }[]
@@ -32,8 +31,9 @@ export function DashboardClient({ initialPokemon }: DashboardClientProps) {
   const [statSortData, setStatSortData] = useState<Record<string, number>>({})
   const itemsPerPage = 24
 
-  const { favorites, isFavorite, isLoaded } = useApp().favorites
-  const { selectedPokemonId, setSelectedPokemonId } = useApp()
+  const app = useApp()
+  const { favorites, isFavorite, isLoaded } = app.favorites
+  const { selectedPokemonId, setSelectedPokemonId } = app
   const { play } = useSoundFX()
 
   const getIdFromUrl = (url: string) => {

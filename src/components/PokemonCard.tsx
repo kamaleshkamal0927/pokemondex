@@ -120,7 +120,7 @@ export function PokemonCard({ name, url, onClick }: PokemonCardProps) {
               <motion.div layoutId={`card-image-${id}`} className="relative h-full w-full">
                 <Image
                   src={imageUrl}
-                  alt={name}
+                  alt={realName}
                   fill
                   className="object-contain transition-transform duration-500 group-hover:scale-110 drop-shadow-2xl"
                   sizes="(max-width: 768px) 100vw, 33vw"
@@ -131,7 +131,7 @@ export function PokemonCard({ name, url, onClick }: PokemonCardProps) {
             <div className="mt-4 flex flex-1 flex-col justify-between z-10">
               <div className="flex items-center justify-between">
                 <motion.h2 layoutId={`card-title-${id}`} className="text-xl font-bold capitalize text-white drop-shadow-md">
-                  {name.replace('-', ' ')}
+                  {realName.replace('-', ' ')}
                 </motion.h2>
                 <span className="text-sm font-medium text-white/50 tracking-wider">
                   #{id.toString().padStart(3, '0')}

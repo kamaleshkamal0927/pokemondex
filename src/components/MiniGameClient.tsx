@@ -33,7 +33,7 @@ export function MiniGameClient() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [allNames, setAllNames] = useState<string[]>([])
   const [showResult, setShowResult] = useState(false)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const { play } = useSoundFX()
 

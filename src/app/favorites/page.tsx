@@ -9,8 +9,9 @@ import { useSoundFX } from '@/components/SoundProvider'
 import { useCallback } from 'react'
 
 export default function FavoritesPage() {
-  const { favorites, isLoaded } = useApp().favorites
-  const { selectedPokemonId, setSelectedPokemonId } = useApp()
+  const app = useApp()
+  const { favorites, isLoaded } = app.favorites
+  const { selectedPokemonId, setSelectedPokemonId } = app
   const { play } = useSoundFX()
 
   const openModal = useCallback((id: number) => { setSelectedPokemonId(id); play('open') }, [setSelectedPokemonId, play])

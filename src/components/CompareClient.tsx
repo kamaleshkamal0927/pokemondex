@@ -143,7 +143,7 @@ export function CompareClient({ allPokemon }: CompareClientProps) {
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-xs uppercase tracking-widest text-white/40">BST</span>
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full text-xs font-black bg-gradient-to-r {tier.color} text-black" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-black bg-gradient-to-r ${tier.color} text-black`}>
                       Tier {tier.tier}
                     </span>
                     <span className="text-sm font-bold text-white">{bst}</span>
