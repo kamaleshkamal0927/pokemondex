@@ -20,6 +20,7 @@ export function PokemonCard({ name, url, onClick }: PokemonCardProps) {
   const [species, setSpecies] = useState<PokemonSpecies | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isFlipped, setIsFlipped] = useState(false)
+  const [realName, setRealName] = useState(name)
 
   const idMatch = url.match(/\/pokemon\/(\d+)\//)
   const id = idMatch ? parseInt(idMatch[1], 10) : 0
@@ -64,6 +65,7 @@ export function PokemonCard({ name, url, onClick }: PokemonCardProps) {
         if (res.ok) {
           const data = await res.json()
           setTypes(data.types.map((t: any) => t.type.name))
+          setRealName(data.name)
         }
         if (speciesData) setSpecies(speciesData)
       } catch (e) {
@@ -167,7 +169,7 @@ export function PokemonCard({ name, url, onClick }: PokemonCardProps) {
             style={{ backfaceVisibility: "hidden" }}
           >
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-bold text-white capitalize">{name.replace('-', ' ')}</h3>
+              <h3 className="text-lg font-bold text-white capitalize">{realName.replace('-', ' ')}</h3>
               <button 
                 onClick={(e) => { e.stopPropagation(); setIsFlipped(false); }}
                 className="text-xs text-white/40 hover:text-white transition-colors uppercase tracking-widest"

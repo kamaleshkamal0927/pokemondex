@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
-import { getPokemonDetails, getPokemonSpecies, getEvolutionChain, PokemonDetails, PokemonSpecies, EvolutionChain as EvoChainType } from '@/lib/pokeapi'
+import { getPokemonDetails, getPokemonSpecies, getEvolutionChain, PokemonDetailsFull, PokemonSpecies, EvolutionChain as EvoChainType } from '@/lib/pokeapi'
 import { TYPE_COLORS } from '@/constants/typeColors'
 import { TypeBadge } from './TypeBadge'
 import { FavoriteButton } from './FavoriteButton'
@@ -12,9 +12,11 @@ import { AudioVisualizer } from './AudioVisualizer'
 import { StatRadar } from './StatRadar'
 import { EvoFlowNode } from './EvoFlowNode'
 import { getTypeEffectiveness } from '@/utils/typeEffectiveness'
+import { getStatTier, getGeneration } from '@/utils/pokemonUtils'
+import { MovesetExplorer } from './MovesetExplorer'
 
 export function PokemonDetailModal({ id, onClose }: { id: number, onClose: () => void }) {
-  const [pokemon, setPokemon] = useState<PokemonDetails | null>(null)
+  const [pokemon, setPokemon] = useState<PokemonDetailsFull | null>(null)
   const [species, setSpecies] = useState<PokemonSpecies | null>(null)
   const [evoChain, setEvoChain] = useState<EvoChainType | null>(null)
   
@@ -62,6 +64,8 @@ export function PokemonDetailModal({ id, onClose }: { id: number, onClose: () =>
 
   const { weaknesses, resistances, immunities } = getTypeEffectiveness(pokemon.types.map(t => t.type.name as any))
   const bst = pokemon.stats.reduce((acc, stat) => acc + stat.base_stat, 0)
+  const tierInfo = getStatTier(bst)
+  const gen = getGeneration(id)
 
   return (
     <motion.div 
@@ -101,8 +105,13 @@ export function PokemonDetailModal({ id, onClose }: { id: number, onClose: () =>
           <motion.h1 layoutId={`card-title-${id}`} className="text-5xl font-black capitalize text-white drop-shadow-lg mb-2 text-center">
             {pokemon.name.replace('-', ' ')}
           </motion.h1>
-          <div className="text-xl font-bold text-white/30 tracking-widest mb-6">
-            #{id.toString().padStart(3, '0')}
+          <div className="flex items-center gap-3 mb-6">
+            <span className="text-xl font-bold text-white/30 tracking-widest">
+              #{id.toString().padStart(3, '0')}
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-white/40">
+              Gen {['I','II','III','IV','V','VI','VII','VIII','IX'][gen - 1]}
+            </span>
           </div>
 
           <div className="flex flex-wrap justify-center gap-3 mb-8">
@@ -149,7 +158,10 @@ export function PokemonDetailModal({ id, onClose }: { id: number, onClose: () =>
           <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-white/90 uppercase tracking-widest">Performance</h3>
-              <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold text-white">BST {bst}</span>
+              <div className="flex items-center gap-3">
+                <span className={`px-3 py-1 rounded-full text-xs font-black bg-gradient-to-r ${tierInfo.color} text-black`}>Tier {tierInfo.tier}</span>
+                <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold text-white">BST {bst}</span>
+              </div>
             </div>
             <StatRadar stats={pokemon.stats} />
           </div>
@@ -184,6 +196,14 @@ export function PokemonDetailModal({ id, onClose }: { id: number, onClose: () =>
             <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 overflow-hidden">
                <h3 className="text-lg font-bold text-white/90 uppercase tracking-widest mb-6">Evolution Line</h3>
                <EvoFlowNode chain={evoChain.chain} />
+            </div>
+          )}
+
+          {/* Moveset Explorer */}
+          {pokemon.moves && pokemon.moves.length > 0 && (
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 overflow-hidden">
+               <h3 className="text-lg font-bold text-white/90 uppercase tracking-widest mb-4">Moveset</h3>
+               <MovesetExplorer moves={pokemon.moves} />
             </div>
           )}
 

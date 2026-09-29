@@ -1,7 +1,7 @@
 import { getAllPokemon } from '@/lib/pokeapi'
-import { DashboardClient } from '@/components/DashboardClient'
+import { CompareClient } from '@/components/CompareClient'
 
-export default async function Home() {
+export default async function ComparePage() {
   const data = await getAllPokemon()
   const allPokemon = data.results.filter((p) => {
     const m = p.url.match(/\/pokemon\/(\d+)\//)
@@ -9,8 +9,8 @@ export default async function Home() {
   })
 
   return (
-    <main className="flex-1">
-      <DashboardClient initialPokemon={allPokemon} />
+    <main className="flex-1 px-4 md:px-8 lg:px-12">
+      <CompareClient allPokemon={allPokemon} />
     </main>
   )
 }
